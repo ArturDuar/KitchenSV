@@ -12,11 +12,22 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.KitchenSV">
         <activity
-            android:name=".OrdenActivity"
-            android:exported="false" />
+            android:name=".PaidOrdersActivity"
+            android:exported="false"
+            android:label="Órdenes Pagadas"
+            />
+        <activity
+            android:name=".DeliveredOrdersActivity"
+            android:exported="false"
+            android:label="Órdenes Entregadas"/>
+        <activity
+            android:name=".CreateOrderActivity"
+            android:exported="false"
+            android:label="Nueva Orden"/>
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:label="KitchenSV">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

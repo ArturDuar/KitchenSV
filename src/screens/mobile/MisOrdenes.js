@@ -6,51 +6,68 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  RefreshControl
+  RefreshControl,
+  ActivityIndicator
 } from 'react-native';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../contexts/AuthContext';
 
 const MisOrdenesScreen = () => {
-  const { user } = useAuth();
+  const { userData } = useAuth(); // ✅ usamos userData en lugar de user
   const [ordenes, setOrdenes] = useState([]);
-  const [filtro, setFiltro] = useState('todas'); // todas, activas, completadas
+  const [filtro, setFiltro] = useState('todas');
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!userData) return; // esperar a que el contexto cargue
+
+    // 📌 UID del mesero desde Firestore (puede ser userData.uid o userData.id)
+    const meseroUid = userData.uid || userData.id;
+    if (!meseroUid) {
+      console.warn('⚠️ No se encontró UID del mesero en userData.');
+      return;
+    }
+
+    // 🔹 Consulta en tiempo real solo las órdenes del mesero
     const q = query(
       collection(db, 'ordenes'),
-      where('mesero.uid', '==', user.uid),
+      where('mesero.uid', '==', meseroUid),
       orderBy('timestamps.creada', 'desc')
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const ordenesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setOrdenes(ordenesData);
-      setRefreshing(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const ordenesData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setOrdenes(ordenesData);
+        setLoading(false);
+        setRefreshing(false);
+      },
+      (error) => {
+        console.error('Error al obtener órdenes:', error);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    );
 
     return () => unsubscribe();
-  }, [user.uid]);
+  }, [userData]);
 
-  const ordenesFiltradas = ordenes.filter(orden => {
-    if (filtro === 'activas') {
-      return orden.estado !== 'entregado';
-    }
-    if (filtro === 'completadas') {
-      return orden.estado === 'entregado';
-    }
+  const ordenesFiltradas = ordenes.filter((orden) => {
+    if (filtro === 'activas') return orden.estado !== 'entregado';
+    if (filtro === 'completadas') return orden.estado === 'entregado';
     return true;
   });
 
   const formatearFecha = (timestamp) => {
     if (!timestamp) return 'N/A';
     const fecha = timestamp.toDate();
-    return fecha.toLocaleDateString('es-ES', {
+    return fecha.toLocaleString('es-ES', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -71,13 +88,43 @@ const MisOrdenesScreen = () => {
 
   const calcularTiempoTotal = (orden) => {
     if (!orden.timestamps.entregada || !orden.timestamps.creada) return null;
-    
     const inicio = orden.timestamps.creada.toMillis();
     const fin = orden.timestamps.entregada.toMillis();
     const minutos = Math.floor((fin - inicio) / 60000);
-    
     return `${minutos} min`;
   };
+
+  const TimelineItem = ({ completado, texto, hora, ultimo }) => (
+    <View style={styles.timelineItem}>
+      <View style={styles.timelineLeft}>
+        <View
+          style={[
+            styles.timelineDot,
+            completado && styles.timelineDotCompletado
+          ]}
+        />
+        {!ultimo && (
+          <View
+            style={[
+              styles.timelineLine,
+              completado && styles.timelineLineCompletada
+            ]}
+          />
+        )}
+      </View>
+      <View style={styles.timelineContent}>
+        <Text
+          style={[
+            styles.timelineTexto,
+            completado && styles.timelineTextoCompletado
+          ]}
+        >
+          {texto}
+        </Text>
+        {hora && <Text style={styles.timelineHora}>{hora}</Text>}
+      </View>
+    </View>
+  );
 
   const renderOrden = ({ item }) => {
     const estadoInfo = getEstadoInfo(item.estado);
@@ -90,24 +137,20 @@ const MisOrdenesScreen = () => {
             <Text style={styles.numeroOrden}>Orden #{item.numeroOrden}</Text>
             <Text style={styles.mesaText}>Mesa {item.mesaNumero}</Text>
           </View>
-          <View style={[styles.estadoBadge, { backgroundColor: estadoInfo.color }]}>
+          <View
+            style={[styles.estadoBadge, { backgroundColor: estadoInfo.color }]}
+          >
             <Text style={styles.estadoEmoji}>{estadoInfo.emoji}</Text>
             <Text style={styles.estadoText}>{estadoInfo.texto}</Text>
           </View>
         </View>
 
-        <View style={styles.fechaContainer}>
-          <Text style={styles.fechaLabel}>Creada:</Text>
-          <Text style={styles.fechaText}>
-            {formatearFecha(item.timestamps.creada)}
-          </Text>
-        </View>
+        <Text style={styles.fechaText}>
+          Creada: {formatearFecha(item.timestamps.creada)}
+        </Text>
 
         {item.estado === 'entregado' && tiempoTotal && (
-          <View style={styles.tiempoContainer}>
-            <Text style={styles.tiempoLabel}>Tiempo total:</Text>
-            <Text style={styles.tiempoText}>{tiempoTotal}</Text>
-          </View>
+          <Text style={styles.tiempoText}>Tiempo total: {tiempoTotal}</Text>
         )}
 
         <View style={styles.divider} />
@@ -138,7 +181,7 @@ const MisOrdenesScreen = () => {
           <Text style={styles.totalMonto}>${item.subtotal.toFixed(2)}</Text>
         </View>
 
-        {/* Timeline de estados */}
+        {/* Timeline */}
         <View style={styles.timeline}>
           <TimelineItem
             completado={true}
@@ -146,19 +189,31 @@ const MisOrdenesScreen = () => {
             hora={formatearFecha(item.timestamps.creada)}
           />
           <TimelineItem
-            completado={item.timestamps.cocinando !== null}
+            completado={!!item.timestamps.cocinando}
             texto="Cocinando"
-            hora={item.timestamps.cocinando ? formatearFecha(item.timestamps.cocinando) : null}
+            hora={
+              item.timestamps.cocinando
+                ? formatearFecha(item.timestamps.cocinando)
+                : null
+            }
           />
           <TimelineItem
-            completado={item.timestamps.preparada !== null}
+            completado={!!item.timestamps.preparada}
             texto="Preparada"
-            hora={item.timestamps.preparada ? formatearFecha(item.timestamps.preparada) : null}
+            hora={
+              item.timestamps.preparada
+                ? formatearFecha(item.timestamps.preparada)
+                : null
+            }
           />
           <TimelineItem
-            completado={item.timestamps.entregada !== null}
+            completado={!!item.timestamps.entregada}
             texto="Entregada"
-            hora={item.timestamps.entregada ? formatearFecha(item.timestamps.entregada) : null}
+            hora={
+              item.timestamps.entregada
+                ? formatearFecha(item.timestamps.entregada)
+                : null
+            }
             ultimo={true}
           />
         </View>
@@ -166,80 +221,67 @@ const MisOrdenesScreen = () => {
     );
   };
 
-  const TimelineItem = ({ completado, texto, hora, ultimo }) => (
-    <View style={styles.timelineItem}>
-      <View style={styles.timelineLeft}>
-        <View style={[
-          styles.timelineDot,
-          completado && styles.timelineDotCompletado
-        ]} />
-        {!ultimo && (
-          <View style={[
-            styles.timelineLine,
-            completado && styles.timelineLineCompletada
-          ]} />
-        )}
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={{ marginTop: 10 }}>Cargando órdenes...</Text>
       </View>
-      <View style={styles.timelineContent}>
-        <Text style={[
-          styles.timelineTexto,
-          completado && styles.timelineTextoCompletado
-        ]}>
-          {texto}
-        </Text>
-        {hora && (
-          <Text style={styles.timelineHora}>{hora}</Text>
-        )}
-      </View>
-    </View>
-  );
+    );
+  }
 
   return (
     <View style={styles.container}>
       {/* Filtros */}
       <View style={styles.filtrosContainer}>
-        <TouchableOpacity
-          style={[styles.filtroButton, filtro === 'todas' && styles.filtroButtonActive]}
-          onPress={() => setFiltro('todas')}
-        >
-          <Text style={[styles.filtroText, filtro === 'todas' && styles.filtroTextActive]}>
-            Todas ({ordenes.length})
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.filtroButton, filtro === 'activas' && styles.filtroButtonActive]}
-          onPress={() => setFiltro('activas')}
-        >
-          <Text style={[styles.filtroText, filtro === 'activas' && styles.filtroTextActive]}>
-            Activas ({ordenes.filter(o => o.estado !== 'entregado').length})
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.filtroButton, filtro === 'completadas' && styles.filtroButtonActive]}
-          onPress={() => setFiltro('completadas')}
-        >
-          <Text style={[styles.filtroText, filtro === 'completadas' && styles.filtroTextActive]}>
-            Completadas ({ordenes.filter(o => o.estado === 'entregado').length})
-          </Text>
-        </TouchableOpacity>
+        {['todas', 'activas', 'completadas'].map((tipo) => (
+          <TouchableOpacity
+            key={tipo}
+            style={[
+              styles.filtroButton,
+              filtro === tipo && styles.filtroButtonActive
+            ]}
+            onPress={() => setFiltro(tipo)}
+          >
+            <Text
+              style={[
+                styles.filtroText,
+                filtro === tipo && styles.filtroTextActive
+              ]}
+            >
+              {tipo.charAt(0).toUpperCase() + tipo.slice(1)} (
+              {ordenes.filter((o) =>
+                tipo === 'activas'
+                  ? o.estado !== 'entregado'
+                  : tipo === 'completadas'
+                    ? o.estado === 'entregado'
+                    : true
+              ).length}
+              )
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Lista de órdenes */}
+      {/* Lista */}
       <FlatList
         data={ordenesFiltradas}
         keyExtractor={(item) => item.id}
         renderItem={renderOrden}
         contentContainerStyle={styles.listContainer}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => setRefreshing(true)}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyEmoji}>📋</Text>
             <Text style={styles.emptyText}>
-              {filtro === 'todas' ? 'No hay órdenes registradas' : `No hay órdenes ${filtro}`}
+              {filtro === 'todas'
+                ? 'No hay órdenes registradas'
+                : `No hay órdenes ${filtro}`}
             </Text>
           </View>
         }

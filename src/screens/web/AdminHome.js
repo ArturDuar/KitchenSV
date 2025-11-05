@@ -22,7 +22,7 @@ const AdminHomeScreen = ({ navigation }) => {
       color: '#007AFF',
       route: 'GestionUsuarios'
     },
-    /*{
+    {
       id: 'menu',
       title: 'Gestión del Menú',
       description: 'Agregar, editar y eliminar productos del menú',
@@ -37,7 +37,7 @@ const AdminHomeScreen = ({ navigation }) => {
       icon: '📊',
       color: '#32CD32',
       route: 'Historial'
-    }*/
+    }
   ];
 
   return (

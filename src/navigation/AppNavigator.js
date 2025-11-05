@@ -1,6 +1,5 @@
-// src/navigation/AppNavigator.js
-import React from 'react';
-import { Platform, View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Platform, View, Text, StyleSheet, Image } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,8 +22,42 @@ import HistorialScreen from '../screens/web/Historial';
 const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => {
-  const { user, userData, loading } = useAuth();
+  const { userData, loading, logout } = useAuth();
+  const [unauthorized, setUnauthorized] = useState(false);
+  const [message, setMessage] = useState('');
 
+  useEffect(() => {
+    if (!userData) return;
+
+    // Detectar rol incorrecto según el dispositivo
+    if (Platform.OS === 'web' && userData.rol === 'mesero') {
+      setMessage('Este usuario debe usar la aplicación móvil.');
+      setUnauthorized(true);
+
+      // Cerrar sesión tras 2.5 s
+      const timer = setTimeout(async () => {
+        await logout();
+        setUnauthorized(false);
+      }, 2500);
+
+      return () => clearTimeout(timer);
+    }
+
+    if (Platform.OS !== 'web' && userData.rol !== 'mesero') {
+      setMessage(`Este usuario solo puede usar la versión web.`);
+      setUnauthorized(true);
+
+      const timer = setTimeout(async () => {
+        await logout();
+        setUnauthorized(false);
+      }, 2500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [userData]);
+
+
+  //  Pantalla de carga
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -33,7 +66,19 @@ const AppNavigator = () => {
     );
   }
 
-  // Sin sesión - Mostrar Login
+  //  Mostrar mensaje de acceso denegado antes del logout
+  if (unauthorized) {
+    return (
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorTitle}>Acceso no permitido</Text>
+        <Text style={styles.errorText}>{message}</Text>
+        <Text style={styles.errorSubtext}>Cerrando sesión en unos segundos...</Text>
+      </View>
+    );
+  }
+
+
+  //  Sin sesión → Login
   if (!userData) {
     return (
       <NavigationContainer>
@@ -44,55 +89,60 @@ const AppNavigator = () => {
     );
   }
 
-  // MÓVIL - Solo Mesero
+  // 📱 MÓVIL — Solo Mesero
   if (Platform.OS !== 'web') {
     if (userData.rol === 'mesero') {
       return (
         <NavigationContainer>
           <Stack.Navigator>
-            <Stack.Screen 
-              name="MeseroHome" 
+            <Stack.Screen
+              name="MeseroHome"
               component={MeseroHomeScreen}
-              options={{ title: 'Órdenes' }}
+              options={{
+                headerTitle: () => (
+                  <Image
+                    source={require('./../../assets/icon.png')} // 👉 cambia la ruta a la de tu logo
+                    style={{ width: 120, height: 40, resizeMode: 'contain' }}
+                  />
+                ),
+                headerTitleAlign: 'center', // centra el logo
+              }}
             />
-            <Stack.Screen 
-              name="TomarOrden" 
+            <Stack.Screen
+              name="TomarOrden"
               component={TomarOrdenScreen}
               options={{ title: 'Nueva Orden' }}
             />
-            <Stack.Screen 
-              name="MisOrdenes" 
+            <Stack.Screen
+              name="MisOrdenes"
               component={MisOrdenesScreen}
               options={{ title: 'Mis Órdenes' }}
             />
           </Stack.Navigator>
         </NavigationContainer>
       );
-    } else {
-      // Usuario no autorizado en móvil
-      return (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>
-            Esta aplicación móvil es solo para meseros.
-          </Text>
-          <Text style={styles.errorText}>
-            Por favor, usa la versión web para {userData.rol}.
-          </Text>
-        </View>
-      );
     }
   }
 
-  // WEB - Cocinero y Admin
+  // 💻 WEB — Cocinero y Admin
   if (Platform.OS === 'web') {
     if (userData.rol === 'cocinero') {
       return (
         <NavigationContainer>
           <Stack.Navigator>
-            <Stack.Screen 
-              name="CocineroHome" 
+            <Stack.Screen
+              name="CocineroHome"
               component={CocineroHomeScreen}
-              options={{ title: 'Cocina - Órdenes Activas' }}
+              options={{
+                headerTitle: () => (
+                  <Image
+                    source={require('./../../assets/icon.png')} // 👉 cambia la ruta a la de tu logo
+                    style={{ width: 120, height: 40, resizeMode: 'contain' }}
+                  />
+                ),
+                headerTitleAlign: 'center', // centra el logo
+              }}
+
             />
           </Stack.Navigator>
         </NavigationContainer>
@@ -103,45 +153,45 @@ const AppNavigator = () => {
       return (
         <NavigationContainer>
           <Stack.Navigator>
-            <Stack.Screen 
-              name="AdminHome" 
+            <Stack.Screen
+              name="AdminHome"
               component={AdminHomeScreen}
-              options={{ title: 'Panel de Administración' }}
+              options={{
+                headerTitle: () => (
+                  <Image
+                    source={require('./../../assets/icon.png')} 
+                    style={{ width: 120, height: 40, resizeMode: 'contain' }}
+                  />
+                ),
+                headerTitleAlign: 'center', 
+              }}
             />
-            <Stack.Screen 
-              name="GestionUsuarios" 
+            <Stack.Screen
+              name="GestionUsuarios"
               component={GestionUsuariosScreen}
               options={{ title: 'Gestión de Usuarios' }}
             />
-            {/*<Stack.Screen 
-              name="GestionMenu" 
+            <Stack.Screen
+              name="GestionMenu"
               component={GestionMenuScreen}
               options={{ title: 'Gestión del Menú' }}
             />
-            <Stack.Screen 
-              name="Historial" 
+            <Stack.Screen
+              name="Historial"
               component={HistorialScreen}
               options={{ title: 'Historial de Órdenes' }}
-            />*/}
+            />
           </Stack.Navigator>
         </NavigationContainer>
       );
     }
-
-    // Mesero intentando acceder desde web
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>
-          Los meseros deben usar la aplicación móvil.
-        </Text>
-      </View>
-    );
   }
 
-  // Fallback
+  // ⚠️ Rol desconocido
   return (
     <View style={styles.errorContainer}>
-      <Text style={styles.errorText}>Error: Rol no reconocido</Text>
+      <Text style={styles.errorTitle}>Error</Text>
+      <Text style={styles.errorText}>Rol no reconocido o configuración inválida.</Text>
     </View>
   );
 };
@@ -160,11 +210,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     padding: 20
   },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#D32F2F',
+    marginBottom: 10
+  },
   errorText: {
     fontSize: 16,
     textAlign: 'center',
-    marginVertical: 10,
-    color: '#333'
+    color: '#333',
+    marginBottom: 10
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 10
   }
 });
 

@@ -120,6 +120,15 @@ const MeseroHomeScreen = ({ navigation }) => {
           <Text style={styles.welcomeText}>Hola, {userData?.nombre || 'Mesero'}</Text>
           <Text style={styles.roleText}>Mesero</Text>
         </View>
+
+        {/* NUEVO: Botón para ver historial completo */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('MisOrdenes')}
+          style={styles.misOrdenesButton}
+        >
+          <Text style={styles.misOrdenesText}>📋 Historial</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={logout} style={styles.logoutButton}>
           <Text style={styles.logoutText}>Cerrar Sesión</Text>
         </TouchableOpacity>
@@ -166,6 +175,17 @@ const styles = StyleSheet.create({
   },
   welcomeText: { fontSize: 20, fontWeight: 'bold', color: '#333' },
   roleText: { fontSize: 14, color: '#666', marginTop: 4 },
+  misOrdenesButton: {
+    padding: 10,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    marginHorizontal: 8
+  },
+  misOrdenesText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600'
+  },
   logoutButton: { padding: 10 },
   logoutText: { color: '#FF3B30', fontSize: 14, fontWeight: '600' },
   nuevaOrdenButton: {
